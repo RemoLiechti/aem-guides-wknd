@@ -69,6 +69,10 @@ public class BylineImpl implements Byline {
 
     // Add a logger for any errors
     private static final Logger LOGGER = LoggerFactory.getLogger(BylineImpl.class);
+    
+    // Locks for deadlock demonstration
+    private static final Object LOCK_A = new Object();
+    private static final Object LOCK_B = new Object();
 
     @PostConstruct
     private void init() {
@@ -82,13 +86,70 @@ public class BylineImpl implements Byline {
 
     @Override
     public List<String> getOccupations() {
-         if (occupations != null) {
-             Collections.sort(occupations);
-             return new ArrayList<String>(occupations);
-         } else {
-             return Collections.emptyList();
-         }
-    }
+        // DEMO: Intentional deadlock for demonstration purposes
+        LOGGER.warn("DEMO: Starting deadlock demonstration in getOccupations()");
+        
+        // Create Thread 1: acquires LOCK_A, then tries to acquire LOCK_B
+        Thread thread1 = new Thread(() -> {
+            LOGGER.warn("DEMO Thread 1: Attempting to acquire LOCK_A");
+            synchronized (LOCK_A) {
+                LOGGER.warn("DEMO Thread 1: Acquired LOCK_A, sleeping for 100ms");
+                try {
+                    Thread.sleep(100); // Give thread2 time to acquire LOCK_B
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                LOGGER.warn("DEMO Thread 1: Now attempting to acquire LOCK_B");
+                synchronized (LOCK_B) {
+                    LOGGER.warn("DEMO Thread 1: Acquired LOCK_B (this won't happen - deadlock!)");
+                }
+            }
+        }, "SomeDemoThread-1");
+        
+        // Create Thread 2: acquires LOCK_B, then tries to acquire LOCK_A
+        Thread thread2 = new Thread(() -> {
+            LOGGER.warn("DEMO Thread 2: Attempting to acquire LOCK_B");
+            synchronized (LOCK_B) {
+                LOGGER.warn("DEMO Thread 2: Acquired LOCK_B, sleeping for 100ms");
+                try {
+                    Thread.sleep(100); // Give thread1 time to acquire LOCK_A
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                LOGGER.warn("DEMO Thread 2: Now attempting to acquire LOCK_A");
+                synchronized (LOCK_A) {
+                    LOGGER.warn("DEMO Thread 2: Acquired LOCK_A (this won't happen - deadlock!)");
+                }
+            }
+        }, "SomeDemoThread-2");
+        
+        // Start both threads
+        thread1.start();
+        thread2.start();
+        
+        // Wait for threads to complete (they won't - deadlock!)
+        try {
+            LOGGER.warn("DEMO Main: Waiting for threads to complete (will timeout after 2 seconds)");
+            thread1.join(2000); // Wait max 2 seconds
+            thread2.join(2000);
+            
+            if (thread1.isAlive() || thread2.isAlive()) {
+                LOGGER.error("DEMO: DEADLOCK DETECTED! Threads are still alive after timeout");
+                LOGGER.error("DEMO Thread 1 state: " + thread1.getState());
+                LOGGER.error("DEMO Thread 2 state: " + thread2.getState());
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            LOGGER.error("DEMO: Main thread interrupted", e);
+        }
+        
+        if (occupations != null) {
+            Collections.sort(occupations);
+            return new ArrayList<String>(occupations);
+        } else {
+            return Collections.emptyList();
+        }
+   }
 
     @Override
     public boolean isEmpty() {
